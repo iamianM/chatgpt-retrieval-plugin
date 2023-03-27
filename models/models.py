@@ -3,6 +3,11 @@ from typing import List, Optional
 from enum import Enum
 
 
+class Source(str, Enum):
+    email = "email"
+    file = "file"
+    chat = "chat"
+
 class DocumentMetadata(BaseModel):
     episode_id: Optional[int] = None
     podcast_id: Optional[int] = None
