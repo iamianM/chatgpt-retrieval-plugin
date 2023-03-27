@@ -9,6 +9,7 @@ class Source(str, Enum):
     chat = "chat"
 
 class DocumentMetadata(BaseModel):
+    source: Optional[Source] = None
     episode_id: Optional[int] = None
     podcast_id: Optional[int] = None
     mp3_url: Optional[str] = None
