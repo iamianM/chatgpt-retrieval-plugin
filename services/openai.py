@@ -1,6 +1,7 @@
 from typing import List
 import openai
-
+from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 
@@ -27,6 +28,18 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
 
     # Return the embeddings as a list of lists of floats
     return [result["embedding"] for result in data]
+
+# Get dense embeddings using a pre-trained Sentence Transformer model
+def get_embeddings(transcripts, model_name="paraphrase-distilroberta-base-v1"):
+    model = SentenceTransformer(model_name)
+    embeddings = model.encode(transcripts)
+    return embeddings
+
+# Get sparse embeddings using TfidfVectorizer
+def get_sparse_embeddings(transcripts):
+    vectorizer = TfidfVectorizer()
+    embeddings = vectorizer.fit_transform(transcripts)
+    return embeddings
 
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))
