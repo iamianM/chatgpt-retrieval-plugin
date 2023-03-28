@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from enum import Enum
 
 
@@ -28,6 +28,7 @@ class DocumentChunk(BaseModel):
     text: str
     metadata: DocumentChunkMetadata
     embedding: Optional[List[float]] = None
+    sparse_values: Optional[Dict[List[float]]] = None
 
 
 class DocumentChunkWithScore(DocumentChunk):
@@ -64,6 +65,8 @@ class Query(BaseModel):
 
 class QueryWithEmbedding(Query):
     embedding: List[float]
+    sparse_indices: List[float]
+    sparse_embedding: List[float]
 
 
 class QueryResult(BaseModel):
