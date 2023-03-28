@@ -209,9 +209,9 @@ def get_document_chunks(
     for i, chunk in enumerate(all_chunks):
         # Assign the embedding from the embeddings list to the chunk object
         chunk.embedding = embeddings[i]
-        chunk.sparse_values = {
-            "indices": sparse_embeddings[i].indices.tolist(),
-            "values": sparse_embeddings[i].data.tolist()
-        }
+        # chunk.sparse_values = {
+        #     "indices": sparse_embeddings[i].indices.tolist(),
+        #     "values": sparse_embeddings[i].data.tolist()
+        # }
 
     return chunks
