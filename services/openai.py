@@ -33,13 +33,13 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
 def get_embeddings(transcripts, model_name="paraphrase-distilroberta-base-v1"):
     model = SentenceTransformer(model_name)
     embeddings = model.encode(transcripts)
-    return embeddings
+    return [e.tolist() for e in embeddings]
 
 # Get sparse embeddings using TfidfVectorizer
 def get_sparse_embeddings(transcripts):
     vectorizer = TfidfVectorizer()
     embeddings = vectorizer.fit_transform(transcripts)
-    return embeddings
+    return [e.indices.tolist() for e in embeddings], [e.data.tolist() for e in embeddings]
 
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))

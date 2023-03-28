@@ -182,8 +182,9 @@ def get_document_chunks(
         return {}
 
     # Get all the embeddings for the document chunks in batches, using get_embeddings
-    embeddings = None
-    sparse_embeddings = None
+    embeddings = []
+    sparse_embeddings = []
+    sparse_indices = []
     for i in range(0, len(all_chunks), EMBEDDINGS_BATCH_SIZE):
         # Get the text of the chunks in the current batch
         batch_texts = [
@@ -192,26 +193,21 @@ def get_document_chunks(
 
         # Get the embeddings for the batch texts
         batch_embeddings = get_embeddings(batch_texts)
-        batch_sparse_embeddings = get_sparse_embeddings(batch_texts)
+        batch_sparse_indices, batch_sparse_embeddings = get_sparse_embeddings(batch_texts)
 
         # Append the batch embeddings to the embeddings list
-        if embeddings is None:
-            embeddings = batch_embeddings
-        else:
-            embeddings = np.vstack((embeddings, batch_embeddings))
+        embeddings.extend(batch_embeddings)
             
-        if sparse_embeddings is None:
-            sparse_embeddings = batch_sparse_embeddings
-        else:
-            sparse_embeddings = np.vstack((sparse_embeddings, batch_sparse_embeddings))
+        sparse_indices.extend(batch_sparse_indices)
+        sparse_embeddings.extend(batch_sparse_embeddings)
 
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
         # Assign the embedding from the embeddings list to the chunk object
-        chunk.embedding = embeddings[i].tolist()
-        # chunk.sparse_values = {
-        #     "indices": sparse_embeddings[i].indices.tolist(),
-        #     "values": sparse_embeddings[i].data.tolist()
-        # }
+        chunk.embedding = embeddings[i]
+        chunk.sparse_values = {
+            "indices": sparse_indices[i],
+            "values": sparse_embeddings[i]
+        }
 
     return chunks
