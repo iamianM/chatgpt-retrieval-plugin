@@ -3,6 +3,7 @@ import uuid
 from models.models import Document, DocumentChunk, DocumentChunkMetadata
 
 import tiktoken
+import numpy as np
 
 from services.openai import get_embeddings, get_sparse_embeddings
 
@@ -181,8 +182,8 @@ def get_document_chunks(
         return {}
 
     # Get all the embeddings for the document chunks in batches, using get_embeddings
-    embeddings: List[List[float]] = []
-    sparse_embeddings: List[List[float]] = []
+    embeddings = None
+    sparse_embeddings = None
     for i in range(0, len(all_chunks), EMBEDDINGS_BATCH_SIZE):
         # Get the text of the chunks in the current batch
         batch_texts = [
@@ -194,8 +195,14 @@ def get_document_chunks(
         batch_sparse_embeddings = get_sparse_embeddings(batch_texts)
 
         # Append the batch embeddings to the embeddings list
-        embeddings.extend(batch_embeddings)
-        sparse_embeddings.extend(batch_embeddings)
+        if embeddings is None:
+            embeddings = batch_embeddings
+        else:
+            embeddings = np.vstack((embeddings, batch_embeddings))
+        if sparse_embeddings is None:
+            sparse_embeddings = batch_sparse_embeddings
+        else:
+            sparse_embeddings = np.vstack((sparse_embeddings, batch_embeddings))
 
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
