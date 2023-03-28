@@ -111,7 +111,7 @@ class PineconeDataStore(DataStore):
 
         return doc_ids
 
-    @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))
+    # @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))
     async def _query(
         self,
         queries: List[QueryWithEmbedding],
@@ -122,7 +122,7 @@ class PineconeDataStore(DataStore):
 
         # Define a helper coroutine that performs a single query and returns a QueryResult
         async def _single_query(query: QueryWithEmbedding) -> QueryResult:
-            print(f"Query: {query.query} ({query.top_k}")
+            print(f"Query: {query.query} ({query.top_k})")
 
             # Convert the metadata filter object to a dict with pinecone filter expressions
             pinecone_filter = self._get_pinecone_filter(query.filter)
