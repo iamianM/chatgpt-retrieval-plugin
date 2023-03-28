@@ -60,7 +60,7 @@ class DocumentMetadataFilter(BaseModel):
 class Query(BaseModel):
     query: str
     filter: Optional[DocumentMetadataFilter] = None
-    top_k: Optional[int] = 5
+    top_k: Optional[int] = 3
 
 
 class QueryWithEmbedding(Query):
