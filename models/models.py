@@ -28,7 +28,7 @@ class DocumentChunk(BaseModel):
     text: str
     metadata: DocumentChunkMetadata
     embedding: Optional[List[float]] = None
-    sparse_values: Optional[Dict[List[float]]] = None
+    sparse_values: Optional[Dict[str, List[float]]] = None
 
 
 class DocumentChunkWithScore(DocumentChunk):
