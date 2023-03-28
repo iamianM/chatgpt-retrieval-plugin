@@ -65,8 +65,8 @@ class Query(BaseModel):
 
 class QueryWithEmbedding(Query):
     embedding: List[float]
-    sparse_indices: List[float]
-    sparse_embedding: List[float]
+    # sparse_indices: List[float]
+    # sparse_embedding: List[float]
 
 
 class QueryResult(BaseModel):
