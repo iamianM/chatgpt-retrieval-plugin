@@ -199,10 +199,11 @@ def get_document_chunks(
             embeddings = batch_embeddings
         else:
             embeddings = np.vstack((embeddings, batch_embeddings))
+            
         if sparse_embeddings is None:
             sparse_embeddings = batch_sparse_embeddings
         else:
-            sparse_embeddings = np.vstack((sparse_embeddings, batch_embeddings))
+            sparse_embeddings = np.vstack((sparse_embeddings, batch_sparse_embeddings))
 
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
