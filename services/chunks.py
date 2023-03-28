@@ -208,7 +208,7 @@ def get_document_chunks(
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
         # Assign the embedding from the embeddings list to the chunk object
-        chunk.embedding = embeddings[i]
+        chunk.embedding = embeddings[i].tolist()
         # chunk.sparse_values = {
         #     "indices": sparse_embeddings[i].indices.tolist(),
         #     "values": sparse_embeddings[i].data.tolist()
