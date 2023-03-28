@@ -150,6 +150,8 @@ class PineconeDataStore(DataStore):
                     if metadata
                     else None
                 )
+                if 'duration' in metadata_without_text:
+                    metadata_without_text['duration'] = str(metadata_without_text['duration'])
 
                 # If the source is not a valid Source in the Source enum, set it to None
                 if (
