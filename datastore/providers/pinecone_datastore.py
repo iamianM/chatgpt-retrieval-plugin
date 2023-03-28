@@ -246,6 +246,7 @@ class PineconeDataStore(DataStore):
                 else:
                     pinecone_filter[field] = value
 
+        print(f"Pinecone filter: {pinecone_filter}")
         return pinecone_filter
 
     def _get_pinecone_metadata(
