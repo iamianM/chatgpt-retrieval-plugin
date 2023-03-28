@@ -86,7 +86,12 @@ class PineconeDataStore(DataStore):
                 # Add the text and document id to the metadata dict
                 pinecone_metadata["text"] = chunk.text
                 pinecone_metadata["document_id"] = doc_id
-                vector = (chunk.id, chunk.embedding, pinecone_metadata, chunk.sparse_values)
+                vector = {
+                    "id":chunk.id, 
+                    "values": chunk.embedding, 
+                    "metadata": pinecone_metadata, 
+                    # "sparse_values": chunk.sparse_values
+                }
                 vectors.append(vector)
 
         # Split the vectors list into batches of the specified size
