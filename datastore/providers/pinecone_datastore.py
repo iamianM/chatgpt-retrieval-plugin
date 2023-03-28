@@ -239,10 +239,10 @@ class PineconeDataStore(DataStore):
             if value is not None:
                 if field == "start_date":
                     pinecone_filter["date"] = pinecone_filter.get("date", {})
-                    pinecone_filter["date"]["$gte"] = str(to_unix_timestamp(value))
+                    pinecone_filter["date"]["$gte"] = to_unix_timestamp(value)
                 elif field == "end_date":
                     pinecone_filter["date"] = pinecone_filter.get("date", {})
-                    pinecone_filter["date"]["$lte"] = str(to_unix_timestamp(value))
+                    pinecone_filter["date"]["$lte"] = to_unix_timestamp(value)
                 else:
                     pinecone_filter[field] = value
 
