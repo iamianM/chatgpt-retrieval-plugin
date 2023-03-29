@@ -122,27 +122,6 @@ async def delete(
         print("Error:", e)
         raise HTTPException(status_code=500, detail="Internal Service Error")
 
-@app.query_chart_data(
-    "/query_chart_data",
-    response_model=QueryResponse,
-)
-async def query_chart_data(
-    request: QueryRequest = Body(...),
-):
-    query_response = query(request)
-    r = {}
-    for k,v in query_response.items():
-        rr = {}
-        for t in v['results']:
-            scores = [tt['score'] for tt in t['results']]
-            rr[t['query']] = sum(scores)/len(scores)
-            
-        r[k] = rr
-        
-    return r
-        
-
-
 
 @app.on_event("startup")
 async def startup():
