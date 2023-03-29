@@ -136,7 +136,7 @@ async def delete(
         raise HTTPException(status_code=500, detail="Internal Service Error")
 
 
-@app.query_chart_data(
+@app.post(
     "/query_chart_data",
     response_model=QueryResponse,
 )
