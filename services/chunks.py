@@ -193,21 +193,21 @@ def get_document_chunks(
 
         # Get the embeddings for the batch texts
         batch_embeddings = get_embeddings(batch_texts)
-        # batch_sparse_indices, batch_sparse_embeddings = get_sparse_embeddings(batch_texts)
+        batch_sparse_indices, batch_sparse_embeddings = get_sparse_embeddings(batch_texts)
 
         # Append the batch embeddings to the embeddings list
         embeddings.extend(batch_embeddings)
             
-        # sparse_indices.extend(batch_sparse_indices)
-        # sparse_embeddings.extend(batch_sparse_embeddings)
+        sparse_indices.extend(batch_sparse_indices)
+        sparse_embeddings.extend(batch_sparse_embeddings)
 
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
         # Assign the embedding from the embeddings list to the chunk object
         chunk.embedding = embeddings[i]
-        # chunk.sparse_values = {
-        #     "indices": sparse_indices[i],
-        #     "values": sparse_embeddings[i]
-        # }
+        chunk.sparse_values = {
+            "indices": sparse_indices[i],
+            "values": sparse_embeddings[i]
+        }
 
     return chunks

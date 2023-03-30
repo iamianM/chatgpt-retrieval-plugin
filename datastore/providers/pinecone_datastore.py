@@ -90,7 +90,7 @@ class PineconeDataStore(DataStore):
                     "id":chunk.id, 
                     "values": chunk.embedding, 
                     "metadata": pinecone_metadata, 
-                    # "sparse_values": chunk.sparse_values
+                    "sparse_values": chunk.sparse_values
                 }
                 vectors.append(vector)
 

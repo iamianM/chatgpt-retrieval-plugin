@@ -28,7 +28,7 @@ class DocumentChunk(BaseModel):
     text: str
     metadata: DocumentChunkMetadata
     embedding: Optional[List[float]] = None
-    # sparse_values: Optional[Dict[str, List[float]]] = None
+    sparse_values: Optional[Dict[str, List[float]]] = None
 
 
 class DocumentChunkWithScore(DocumentChunk):
@@ -65,8 +65,8 @@ class Query(BaseModel):
 
 class QueryWithEmbedding(Query):
     embedding: List[float]
-    # sparse_indices: List[float]
-    # sparse_embedding: List[float]
+    sparse_indices: List[float]
+    sparse_embedding: List[float]
 
 
 class QueryResult(BaseModel):

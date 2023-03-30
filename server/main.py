@@ -9,6 +9,8 @@ from models.api import (
     DeleteResponse,
     QueryRequest,
     QueryResponse,
+    QueryChartDataRequest,
+    QueryChartDataResponse,
     UpsertRequest,
     UpsertResponse,
 )
@@ -138,10 +140,10 @@ async def delete(
 
 @app.post(
     "/query_chart_data",
-    response_model=QueryResponse,
+    response_model=QueryChartDataResponse,
 )
 async def query_chart_data(
-    request: QueryRequest = Body(...),
+    request: QueryChartDataRequest = Body(...),
 ):
     query_response = query(request)
     r = {}

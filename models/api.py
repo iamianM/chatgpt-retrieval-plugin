@@ -23,6 +23,16 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     results: List[QueryResult]
+    
+    
+class QueryChartDataRequest(BaseModel):
+    queries: List[str]
+    time_intervals: List[str]
+    top_k: int
+
+
+class QueryChartDataResponse(BaseModel):
+    results: List[List[float]]
 
 
 class DeleteRequest(BaseModel):
