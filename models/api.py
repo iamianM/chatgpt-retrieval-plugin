@@ -19,6 +19,10 @@ class UpsertResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     queries: List[Query]
+    
+class ChatQueryRequest(BaseModel):
+    queries: List[Query]
+    messages: List[str]
 
 
 class QueryResponse(BaseModel):
@@ -33,6 +37,9 @@ class QueryChartDataRequest(BaseModel):
 
 class QueryChartDataResponse(BaseModel):
     results: List[List[float]]
+    
+class ChatQueryResult(BaseModel):
+    response: List[str]
 
 
 class DeleteRequest(BaseModel):

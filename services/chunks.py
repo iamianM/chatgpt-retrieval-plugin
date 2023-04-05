@@ -4,6 +4,7 @@ from models.models import Document, DocumentChunk, DocumentChunkMetadata
 
 import tiktoken
 import numpy as np
+import re
 
 from services.openai import get_embeddings, get_sparse_embeddings
 
@@ -20,7 +21,7 @@ EMBEDDINGS_BATCH_SIZE = 128  # The number of embeddings to request at a time
 MAX_NUM_CHUNKS = 10000  # The maximum number of chunks to generate from a text
 
 
-def get_text_chunks(text: str, chunk_token_size: Optional[int]) -> List[str]:
+def get_text_chunks(text: str, chunk_token_size: Optional[int]):
     """
     Split a text into chunks of ~CHUNK_SIZE tokens, based on punctuation and newline boundaries.
 
@@ -47,6 +48,8 @@ def get_text_chunks(text: str, chunk_token_size: Optional[int]) -> List[str]:
     # Initialize a counter for the number of chunks
     num_chunks = 0
 
+    last_timestamp = "00:00:00"
+    timestamps = []
     # Loop until all tokens are consumed
     while tokens and num_chunks < MAX_NUM_CHUNKS:
         # Take the first chunk_size tokens as a chunk
@@ -61,6 +64,15 @@ def get_text_chunks(text: str, chunk_token_size: Optional[int]) -> List[str]:
             tokens = tokens[len(chunk) :]
             # Continue to the next iteration of the loop
             continue
+        
+        speaker_and_time = re.findall(r"\((\w+)\)\[(\d{2}:\d{2}:\d{2})\]", chunk_text)
+        ts = [match[1] for match in speaker_and_time]
+        if len(ts) > 0:
+            last_timestamp = ts[-1]
+            
+        timestamps.append(last_timestamp)
+        
+        chunk_text = re.sub(r"\((\w+)\)\[(\d{2}:\d{2}:\d{2})\]", "", chunk_text)
 
         # Find the last period or punctuation mark in the chunk
         last_punctuation = max(
@@ -94,7 +106,7 @@ def get_text_chunks(text: str, chunk_token_size: Optional[int]) -> List[str]:
         if len(remaining_text) > MIN_CHUNK_LENGTH_TO_EMBED:
             chunks.append(remaining_text)
 
-    return chunks
+    return chunks, timestamps
 
 
 def create_document_chunks(
@@ -119,7 +131,7 @@ def create_document_chunks(
     doc_id = doc.id or str(uuid.uuid4())
 
     # Split the document text into chunks
-    text_chunks = get_text_chunks(doc.text, chunk_token_size)
+    text_chunks, text_timestamps = get_text_chunks(doc.text, chunk_token_size)
 
     metadata = (
         DocumentChunkMetadata(**doc.metadata.__dict__)
@@ -138,6 +150,7 @@ def create_document_chunks(
         doc_chunk = DocumentChunk(
             id=chunk_id,
             text=text_chunk,
+            most_recent_timestamp=text_timestamps[i],
             metadata=metadata,
         )
         # Append the chunk object to the list of chunks for this document
@@ -183,8 +196,7 @@ def get_document_chunks(
 
     # Get all the embeddings for the document chunks in batches, using get_embeddings
     embeddings = []
-    sparse_embeddings = []
-    sparse_indices = []
+    sparse_values = []
     for i in range(0, len(all_chunks), EMBEDDINGS_BATCH_SIZE):
         # Get the text of the chunks in the current batch
         batch_texts = [
@@ -193,21 +205,17 @@ def get_document_chunks(
 
         # Get the embeddings for the batch texts
         batch_embeddings = get_embeddings(batch_texts)
-        batch_sparse_indices, batch_sparse_embeddings = get_sparse_embeddings(batch_texts)
+        batch_sparse_values = get_sparse_embeddings(batch_texts)
 
         # Append the batch embeddings to the embeddings list
         embeddings.extend(batch_embeddings)
             
-        sparse_indices.extend(batch_sparse_indices)
-        sparse_embeddings.extend(batch_sparse_embeddings)
+        sparse_values.extend(batch_sparse_values)
 
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
         # Assign the embedding from the embeddings list to the chunk object
         chunk.embedding = embeddings[i]
-        chunk.sparse_values = {
-            "indices": sparse_indices[i],
-            "values": sparse_embeddings[i]
-        }
+        chunk.sparse_values = sparse_values[i]
 
     return chunks

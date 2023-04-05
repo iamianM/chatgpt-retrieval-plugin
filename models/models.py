@@ -17,6 +17,8 @@ class DocumentMetadata(BaseModel):
     duration: Optional[str] = None
     author: Optional[str] = None
     name: Optional[str] = None
+    slug: Optional[str] = None
+    most_recent_timestamp: Optional[str] = None
 
 
 class DocumentChunkMetadata(DocumentMetadata):
@@ -28,7 +30,7 @@ class DocumentChunk(BaseModel):
     text: str
     metadata: DocumentChunkMetadata
     embedding: Optional[List[float]] = None
-    sparse_values: Optional[Dict[str, List[float]]] = None
+    sparse_values: Optional[Dict[str, List]] = None
 
 
 class DocumentChunkWithScore(DocumentChunk):
@@ -55,18 +57,18 @@ class DocumentMetadataFilter(BaseModel):
     duration: Optional[str] = None
     author: Optional[str] = None
     name: Optional[str] = None
+    slug: Optional[str] = None
 
 
 class Query(BaseModel):
     query: str
     filter: Optional[DocumentMetadataFilter] = None
-    top_k: Optional[int] = 3
+    top_k: Optional[int] = 5
 
 
 class QueryWithEmbedding(Query):
     embedding: List[float]
-    sparse_indices: List[float]
-    sparse_embedding: List[float]
+    sparse_values: Dict[str, List]
 
 
 class QueryResult(BaseModel):

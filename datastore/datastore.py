@@ -57,16 +57,15 @@ class DataStore(ABC):
         # get a list of of just the queries from the Query list
         query_texts = [query.query for query in queries]
         query_embeddings = get_embeddings(query_texts)
-        # query_sparse_indices, query_sparse_embeddings = get_sparse_embeddings(query_texts)
+        query_sparse_values = get_sparse_embeddings(query_texts)
         # hydrate the queries with embeddings
         queries_with_embeddings = [
-            QueryWithEmbedding(**query.dict(), embedding=embedding)
-            for query, embedding in zip(queries, query_embeddings)
-        ]
-        # [
-        #     QueryWithEmbedding(**query.dict(), embedding=embedding, sparse_indices=sparse_indices, sparse_embeddings=sparse_embeddings)
-        #     for query, embedding, sparse_indices, sparse_embeddings in zip(queries, query_embeddings, query_sparse_indices, query_sparse_embeddings)
+        #     QueryWithEmbedding(**query.dict(), embedding=embedding)
+        #     for query, embedding in zip(queries, query_embeddings)
         # ]
+            QueryWithEmbedding(**query.dict(), embedding=embedding, sparse_values=sparse_values)
+            for query, embedding, sparse_values in zip(queries, query_embeddings, query_sparse_values)
+        ]
         return await self._query(queries_with_embeddings)
 
     @abstractmethod

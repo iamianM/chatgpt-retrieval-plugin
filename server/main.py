@@ -3,6 +3,8 @@ import uvicorn
 from fastapi import FastAPI, File, HTTPException, Depends, Body, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
+from typing import List
+from services.openai import get_chat_completion
 
 from models.api import (
     DeleteRequest,
@@ -13,6 +15,9 @@ from models.api import (
     QueryChartDataResponse,
     UpsertRequest,
     UpsertResponse,
+    ChatQueryRequest,
+    ChatQueryResult,
+    Query,
 )
 from datastore.factory import get_datastore
 from services.file import get_document_from_file
@@ -157,11 +162,75 @@ async def query_chart_data(
         
     return r
 
+def call_chat(segments: List[dict], messages: List[str], q: str) -> str:
+    messages_openai = [
+        {
+            "role": "system",
+            "content": f"""
+            You take in segments of podcast transcripts that have been found using embeddings.
+            Using these segments to answer users questions. Answer no matter what.
+            """,
+        }
+    ]
+    for i in range(len(messages) - 1):
+        messages_openai.append({"role": "user", "content": messages[i]})
+    messages_openai.append({"role": "user", "content": str(segments) + '\n\n' + q})
+
+    print(messages_openai)
+    print(segments)
+    completion = get_chat_completion(
+        messages_openai,
+    )
+    
+    return completion
+
+@app.post(
+    "/chat_query",
+    response_model=ChatQueryResult,
+)
+async def chat_query(
+    request: ChatQueryRequest = Body(...),
+):
+    new_queries = []
+    for q in request.queries:
+        f = {}
+        if q.filter:
+            f = {k: v for k,v in q.filter.dict() if k in ['episode_id', 'podcast_id']}
+        new_queries.append(Query.parse_obj({
+            "query": q.query, 
+            "filter": f, 
+            "top_k": q.top_k
+        }))
+    request.queries = new_queries
+    
+    query_response = await query(request)
+    query_results = []
+    for t in query_response.results:
+        keys_to_extract = ['text', 'score', 'name', 'author']
+        query_results.append(
+            [{key: tt.dict()['metadata'][key] if key in ['name', 'author'] else tt.dict()[key] for key in keys_to_extract} for tt in t.results]
+        )
+
+    results = []
+    for i in range(len(query_results)):
+        results.append(call_chat(query_results[i], request.messages, request.queries[i].query))
+        
+    return {'response': results}
+
 @app.on_event("startup")
 async def startup():
     global datastore
     datastore = await get_datastore()
 
-
 def start():
-    uvicorn.run("server.main:app", host="0.0.0.0", port=8000, reload=True, workers=8)
+    attempts = 0
+    worked = False
+    port = 8000
+    while not worked and attempts < 5:
+        try:
+            uvicorn.run("server.main:app", host="0.0.0.0", port=port, reload=True, workers=8)
+        except KeyboardInterrupt:
+            cvwdv
+        except:
+            attempts += 1
+            port += 1

@@ -86,6 +86,7 @@ class PineconeDataStore(DataStore):
                 # Add the text and document id to the metadata dict
                 pinecone_metadata["text"] = chunk.text
                 pinecone_metadata["document_id"] = doc_id
+                pinecone_metadata["most_recent_timestamp"] = chunk.most_recent_timestamp
                 vector = {
                     "id":chunk.id, 
                     "values": chunk.embedding, 
@@ -129,10 +130,12 @@ class PineconeDataStore(DataStore):
 
             try:
                 # Query the index with the query embedding, filter, and top_k
+                print(query.sparse_values)
                 query_response = self.index.query(
                     # namespace=namespace,
                     top_k=query.top_k,
                     vector=query.embedding,
+                    sparse_vector=query.sparse_values,
                     filter=pinecone_filter,
                     include_metadata=True,
                 )
@@ -161,6 +164,7 @@ class PineconeDataStore(DataStore):
                 ):
                     metadata_without_text["source"] = None
 
+                metadata_without_text['most_recent_timestamp'] = metadata_without_text['most_recent_timestamp'].strftime("%H:%M:%S")
                 # Create a document chunk with score object with the result data
                 result = DocumentChunkWithScore(
                     id=result.id,
@@ -246,7 +250,6 @@ class PineconeDataStore(DataStore):
                 else:
                     pinecone_filter[field] = value
 
-        print(f"Pinecone filter: {pinecone_filter}")
         return pinecone_filter
 
     def _get_pinecone_metadata(
