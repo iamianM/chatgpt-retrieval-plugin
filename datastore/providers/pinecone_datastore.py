@@ -86,7 +86,7 @@ class PineconeDataStore(DataStore):
                 # Add the text and document id to the metadata dict
                 pinecone_metadata["text"] = chunk.text
                 pinecone_metadata["document_id"] = doc_id
-                pinecone_metadata["most_recent_timestamp"] = chunk.most_recent_timestamp
+                pinecone_metadata["chunk_id"] = int(chunk.id.split('_')[1])
                 vector = {
                     "id":chunk.id, 
                     "values": chunk.embedding, 
@@ -115,7 +115,7 @@ class PineconeDataStore(DataStore):
     # @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))
     async def _query(
         self,
-        queries: List[QueryWithEmbedding],
+        queries: List[QueryWithEmbedding], search_topics=False
     ) -> List[QueryResult]:
         """
         Takes in a list of queries with embeddings and filters and returns a list of query results with matching document chunks and scores.
@@ -130,15 +130,28 @@ class PineconeDataStore(DataStore):
 
             try:
                 # Query the index with the query embedding, filter, and top_k
-                print(query.sparse_values)
-                query_response = self.index.query(
-                    # namespace=namespace,
-                    top_k=query.top_k,
-                    vector=query.embedding,
-                    sparse_vector=query.sparse_values,
-                    filter=pinecone_filter,
-                    include_metadata=True,
-                )
+                if search_topics:
+                    namespace="topics"
+                    pinecone_filter = {k:v for k,v in pinecone_filter.items() if k in ['episode_id', 'podcast_id']}
+                    print(namespace)
+                    query_response = self.index.query(
+                        namespace=namespace,
+                        top_k=query.top_k,
+                        vector=query.embedding,
+                        filter=pinecone_filter,
+                        include_metadata=True,
+                    )
+                else:
+                    # namespace=""
+                    pinecone_filter = {k:v for k,v in pinecone_filter.items() if v is not None}
+                    query_response = self.index.query(
+                        # namespace=namespace,
+                        top_k=query.top_k,
+                        vector=query.embedding,
+                        sparse_vector=query.sparse_values,
+                        filter=pinecone_filter,
+                        include_metadata=True,
+                    )
             except Exception as e:
                 print(f"Error querying index: {e}")
                 raise e
@@ -153,8 +166,10 @@ class PineconeDataStore(DataStore):
                     if metadata
                     else None
                 )
-                if 'duration' in metadata_without_text:
-                    metadata_without_text['duration'] = str(metadata_without_text['duration'])
+                if 'episode_duration' in metadata_without_text:
+                    metadata_without_text['episode_duration'] = str(metadata_without_text['episode_duration'])
+                if 'episode_id' in metadata_without_text:
+                    metadata_without_text['episode_id'] = str(metadata_without_text['episode_id'])
 
                 # If the source is not a valid Source in the Source enum, set it to None
                 if (
@@ -163,8 +178,7 @@ class PineconeDataStore(DataStore):
                     and metadata_without_text["source"] not in Source.__members__
                 ):
                     metadata_without_text["source"] = None
-
-                metadata_without_text['most_recent_timestamp'] = metadata_without_text['most_recent_timestamp'].strftime("%H:%M:%S")
+                    
                 # Create a document chunk with score object with the result data
                 result = DocumentChunkWithScore(
                     id=result.id,
@@ -247,6 +261,12 @@ class PineconeDataStore(DataStore):
                 elif field == "end_date":
                     pinecone_filter["created_at"] = pinecone_filter.get("created_at", {})
                     pinecone_filter["created_at"]["$lte"] = to_unix_timestamp(value)
+                elif field == "chunk_id_start":
+                    pinecone_filter["chunk_id"] = pinecone_filter.get("chunk_id", {})
+                    pinecone_filter["chunk_id"]["$gte"] = value
+                elif field == "chunk_id_end":
+                    pinecone_filter["chunk_id"] = pinecone_filter.get("chunk_id", {})
+                    pinecone_filter["chunk_id"]["$lte"] = value
                 else:
                     pinecone_filter[field] = value
 

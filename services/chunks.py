@@ -5,6 +5,11 @@ from models.models import Document, DocumentChunk, DocumentChunkMetadata
 import tiktoken
 import numpy as np
 import re
+import json
+import os
+from services.date import to_unix_timestamp
+
+datastore_service = os.getenv('DATASTORE')
 
 from services.openai import get_embeddings, get_sparse_embeddings
 
@@ -37,42 +42,39 @@ def get_text_chunks(text: str, chunk_token_size: Optional[int]):
         return []
 
     # Tokenize the text
-    tokens = tokenizer.encode(text, disallowed_special=())
-
-    # Initialize an empty list of chunks
-    chunks = []
+    chunks = json.loads(text)
 
     # Use the provided chunk token size or the default one
-    chunk_size = chunk_token_size or CHUNK_SIZE
+    chunk_size_goal = chunk_token_size or CHUNK_SIZE
 
     # Initialize a counter for the number of chunks
     num_chunks = 0
 
-    last_timestamp = "00:00:00"
-    timestamps = []
+    text_metadatas = []
+    start_timestamps = []
+    end_timestamps = []
+    chunk_text = ""
+    result = []
+    text_idx = 0
+    
     # Loop until all tokens are consumed
-    while tokens and num_chunks < MAX_NUM_CHUNKS:
-        # Take the first chunk_size tokens as a chunk
-        chunk = tokens[:chunk_size]
-
-        # Decode the chunk into text
-        chunk_text = tokenizer.decode(chunk)
-
-        # Skip the chunk if it is empty or whitespace
-        if not chunk_text or chunk_text.isspace():
-            # Remove the tokens corresponding to the chunk text from the remaining tokens
-            tokens = tokens[len(chunk) :]
-            # Continue to the next iteration of the loop
-            continue
-        
-        speaker_and_time = re.findall(r"\((\w+)\)\[(\d{2}:\d{2}:\d{2})\]", chunk_text)
-        ts = [match[1] for match in speaker_and_time]
-        if len(ts) > 0:
-            last_timestamp = ts[-1]
+    while chunks and num_chunks < MAX_NUM_CHUNKS:
+        start_timestamps.append(f"[{chunks[0]['time']}]")
+        text_metadata = []
+        chunk_size = 0
+        while chunk_size < chunk_size_goal and chunks:
+            data = {'text_index': text_idx}
+            chunk_text += " " + chunks[0]['content']
+            chunk_size += len(tokenizer.encode(chunks[0]['content'], disallowed_special=()))
+            text_idx += len(chunks[0]['content'])
+            end_timestamp = f"[{chunks[0]['time']}]"
+            data.update({k: v for k, v in chunks[0].items() if k != 'content'})
+            # data.update({k: v for k, v in chunks[0].items()})
+            # text_metadata.append("json.dumps(data)")
+            chunks = chunks[1:]
             
-        timestamps.append(last_timestamp)
-        
-        chunk_text = re.sub(r"\((\w+)\)\[(\d{2}:\d{2}:\d{2})\]", "", chunk_text)
+        end_timestamps.append(end_timestamp)
+        text_metadatas.append(text_metadata)
 
         # Find the last period or punctuation mark in the chunk
         last_punctuation = max(
@@ -84,29 +86,36 @@ def get_text_chunks(text: str, chunk_token_size: Optional[int]):
 
         # If there is a punctuation mark, and the last punctuation index is before MIN_CHUNK_SIZE_CHARS
         if last_punctuation != -1 and last_punctuation > MIN_CHUNK_SIZE_CHARS:
-            # Truncate the chunk text at the punctuation mark
-            chunk_text = chunk_text[: last_punctuation + 1]
-
+            chunk_text_to_append = chunk_text[: last_punctuation + 1]
+            chunk_text = chunk_text[last_punctuation + 1:]
+        else:
+            chunk_text_to_append = chunk_text
+            chunk_text = ""
+            
         # Remove any newline characters and strip any leading or trailing whitespace
-        chunk_text_to_append = chunk_text.replace("\n", " ").strip()
+        chunk_text_to_append = chunk_text_to_append.replace("\n", " ").strip()
 
         if len(chunk_text_to_append) > MIN_CHUNK_LENGTH_TO_EMBED:
             # Append the chunk text to the list of chunks
-            chunks.append(chunk_text_to_append)
-
-        # Remove the tokens corresponding to the chunk text from the remaining tokens
-        tokens = tokens[len(tokenizer.encode(chunk_text, disallowed_special=())) :]
+            result.append(chunk_text_to_append)
+        else:
+            text_metadatas.pop()
+            start_timestamps.pop()
+            end_timestamps.pop()
 
         # Increment the number of chunks
         num_chunks += 1
 
     # Handle the remaining tokens
-    if tokens:
-        remaining_text = tokenizer.decode(tokens).replace("\n", " ").strip()
-        if len(remaining_text) > MIN_CHUNK_LENGTH_TO_EMBED:
-            chunks.append(remaining_text)
+    if chunk_text:
+        chunk_text = chunk_text.replace("\n", " ").strip()
+        if len(chunk_text) > MIN_CHUNK_LENGTH_TO_EMBED:
+            result.append(chunk_text)
+            text_metadatas.append([])
+            start_timestamps.append(end_timestamps[-1])
+            end_timestamps.append(end_timestamps[-1])
 
-    return chunks, timestamps
+    return result, text_metadatas, start_timestamps, end_timestamps
 
 
 def create_document_chunks(
@@ -131,14 +140,13 @@ def create_document_chunks(
     doc_id = doc.id or str(uuid.uuid4())
 
     # Split the document text into chunks
-    text_chunks, text_timestamps = get_text_chunks(doc.text, chunk_token_size)
+    text_chunks, text_metadatas, start_timestamps, end_timestamps = get_text_chunks(doc.text, chunk_token_size)
 
     metadata = (
         DocumentChunkMetadata(**doc.metadata.__dict__)
         if doc.metadata is not None
         else DocumentChunkMetadata()
     )
-
     metadata.document_id = doc_id
 
     # Initialize an empty list of chunks for this document
@@ -147,11 +155,15 @@ def create_document_chunks(
     # Assign each chunk a sequential number and create a DocumentChunk object
     for i, text_chunk in enumerate(text_chunks):
         chunk_id = f"{doc_id}_{i}"
+        metadata_copy = metadata.copy()
+        metadata_copy.start_timestamp = start_timestamps[i]
+        metadata_copy.end_timestamp = end_timestamps[i]
+        metadata_copy.text_metadata = text_metadatas[i]
+        metadata_copy.created_at = to_unix_timestamp(metadata_copy.created_at) if type(metadata_copy.created_at) == str else metadata_copy.created_at
         doc_chunk = DocumentChunk(
             id=chunk_id,
             text=text_chunk,
-            most_recent_timestamp=text_timestamps[i],
-            metadata=metadata,
+            metadata=metadata_copy,
         )
         # Append the chunk object to the list of chunks for this document
         doc_chunks.append(doc_chunk)
@@ -205,17 +217,17 @@ def get_document_chunks(
 
         # Get the embeddings for the batch texts
         batch_embeddings = get_embeddings(batch_texts)
-        batch_sparse_values = get_sparse_embeddings(batch_texts)
-
-        # Append the batch embeddings to the embeddings list
         embeddings.extend(batch_embeddings)
-            
-        sparse_values.extend(batch_sparse_values)
+        
+        if datastore_service == 'pinecone':
+            batch_sparse_values = get_sparse_embeddings(batch_texts)
+            sparse_values.extend(batch_sparse_values)
 
     # Update the document chunk objects with the embeddings
     for i, chunk in enumerate(all_chunks):
         # Assign the embedding from the embeddings list to the chunk object
         chunk.embedding = embeddings[i]
-        chunk.sparse_values = sparse_values[i]
+        if datastore_service == 'pinecone':
+            chunk.sparse_values = sparse_values[i]
 
     return chunks

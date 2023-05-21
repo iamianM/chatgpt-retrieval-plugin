@@ -1,12 +1,24 @@
 from typing import List
-import openai
+import openai, json
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from tenacity import retry, wait_random_exponential, stop_after_attempt
+from tenacity import retry, wait_random_exponential, stop_after_attempt, after, stop_after_delay
 
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 import torch
+
+SECRETS = json.load(open("./OPENAI_KEY.json"))
+openai.api_key = SECRETS["OPENAI_KEY"]
+
+ATTEMPTS = 5
+
+import logging
+import logging.config
+
+logging.config.fileConfig('logging_config.ini')
+def log_retry(retry_state):
+    logging.info(f'Retrying {retry_state.fn} after {retry_state.attempt_number} attempt(s) due to {retry_state.outcome}')
 
 class SPLADE:
     def __init__(self, model):
@@ -36,7 +48,7 @@ class SPLADE:
             'values': nz_weights.cpu().numpy().tolist()
         }
 
-splade = SPLADE("naver/splade-cocondenser-ensembledistil")
+# splade = SPLADE("naver/splade-cocondenser-ensembledistil")
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))
 def get_embeddings(texts: List[str]) -> List[List[float]]:
@@ -69,10 +81,8 @@ def get_embeddings(transcripts, model_name="sentence-transformers/all-MiniLM-L6-
 
 # Get sparse embeddings using TfidfVectorizer
 def get_sparse_embeddings(transcripts):
-    # vectorizer = TfidfVectorizer()
-    # embeddings = vectorizer.fit_transform(transcripts)
-    # return [e.indices.tolist() for e in embeddings], [e.data.tolist() for e in embeddings]
-    return [splade(transcript) for transcript in transcripts]
+    return []
+    # return [splade(transcript) for transcript in transcripts]
 
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(3))
@@ -103,3 +113,53 @@ def get_chat_completion(
     completion = choices[0].message.content.strip()
     print(f"Completion: {completion}")
     return completion
+
+@retry(wait=wait_random_exponential(min=5, max=20), stop=(stop_after_attempt(ATTEMPTS) | stop_after_delay(120)), after=log_retry)
+async def openai_response(model, messages, max_tokens, temperature):
+    result = openai.ChatCompletion.create(
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stream=False
+    ).choices[0].message['content']
+    return result
+
+from typing import List, Dict
+import tiktoken
+
+tokenizer = tiktoken.get_encoding(
+    "cl100k_base"
+)
+def get_messages2(question: str, results: List[Dict], token_len_max: int) -> str:
+    token_len = 100000
+    drop = 0
+    
+    while token_len > token_len_max:
+        files_string = ""
+        files_string += f"Files:\n"
+        for i in range(len(results)):
+            if i >= len(results) - drop:
+                break
+            
+            filename = f"https://steno.ai/{results[i]['name'].lower().replace(' ', '-')}/{results[i]['slug']}"
+            file_text = results[i]['text']
+            file_string = f"###\n\"{filename}\"\n{file_text}\n"
+            files_string += file_string
+        files_string += "\n"
+        messages = [{
+            "role": "system",
+            "content": f"{files_string}" \
+            f"Above are segments of podcast transcripts relating to the users query. Use them to help you respond to the users request. " \
+            f"Keep in mind the user cannot see the above. "
+            f"When referencing an episode from the above use markdown format to make a clickable link. \n\n" \
+            f"Question: {question}\n\n" \
+            f"Answer:"
+        }]
+
+        token_len = len(tokenizer.encode(messages[0]['content'], disallowed_special=()))
+        print(token_len)
+        drop += 1
+        
+    print(messages)
+    return results, messages

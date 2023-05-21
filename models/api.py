@@ -18,10 +18,12 @@ class UpsertResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     queries: List[Query]
+    search_topics: Optional[bool] = False
     
 class ChatQueryRequest(BaseModel):
     queries: List[Query]
     messages: List[str]
+    search_topics: Optional[bool] = False
 
 
 class QueryResponse(BaseModel):
@@ -49,3 +51,9 @@ class DeleteRequest(BaseModel):
 
 class DeleteResponse(BaseModel):
     success: bool
+    
+class AskQuestionInput(BaseModel):
+    question: str
+    use_gpt4: bool = False
+    temperature: float = 0.1
+    max_response_tokens: int = 500

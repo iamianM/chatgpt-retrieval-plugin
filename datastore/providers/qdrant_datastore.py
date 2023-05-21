@@ -1,4 +1,5 @@
 import os
+from turtle import st
 import uuid
 from typing import Dict, List, Optional
 
@@ -33,7 +34,7 @@ class QdrantDataStore(DataStore):
     def __init__(
         self,
         collection_name: Optional[str] = None,
-        vector_size: int = 1536,
+        vector_size: int = 384,
         distance: str = "Cosine",
         recreate_collection: bool = False,
     ):
@@ -77,7 +78,7 @@ class QdrantDataStore(DataStore):
 
     async def _query(
         self,
-        queries: List[QueryWithEmbedding],
+        queries: List[QueryWithEmbedding], search_topics=False
     ) -> List[QueryResult]:
         """
         Takes in a list of queries with embeddings and filters and returns a list of query results with matching document chunks and scores.
@@ -94,7 +95,7 @@ class QdrantDataStore(DataStore):
                 query=query.query,
                 results=[
                     self._convert_scored_point_to_document_chunk_with_score(point)
-                    for point in result
+                    for point in result if point
                 ],
             )
             for query, result in zip(queries, results)
@@ -132,7 +133,9 @@ class QdrantDataStore(DataStore):
         self, document_chunk: DocumentChunk
     ) -> rest.PointStruct:
         created_at = (
-            to_unix_timestamp(document_chunk.metadata.created_at)
+            to_unix_timestamp(document_chunk.metadata.created_at) 
+            if type(document_chunk.metadata.created_at) == str 
+            else document_chunk.metadata.created_at
             if document_chunk.metadata.created_at is not None
             else None
         )
@@ -160,7 +163,7 @@ class QdrantDataStore(DataStore):
             filter=self._convert_metadata_filter_to_qdrant_filter(query.filter),
             limit=query.top_k,  # type: ignore
             with_payload=True,
-            with_vector=False,
+            with_vector=query.include_embeddings,
         )
 
     def _convert_metadata_filter_to_qdrant_filter(
@@ -185,37 +188,38 @@ class QdrantDataStore(DataStore):
 
         # Equality filters for the payload attributes
         if metadata_filter:
-            meta_attributes_keys = {
-                "document_id": "metadata.document_id",
-                "source": "metadata.source",
-                "source_id": "metadata.source_id",
-                "author": "metadata.author",
-            }
-
-            for meta_attr_name, payload_key in meta_attributes_keys.items():
-                attr_value = getattr(metadata_filter, meta_attr_name)
-                if attr_value is None:
+            for meta_attr_name, attr_value in metadata_filter.dict().items():
+                if attr_value in [None, "", []]:
                     continue
 
-                must_conditions.append(
-                    rest.FieldCondition(
-                        key=payload_key, match=rest.MatchValue(value=attr_value)
+                if meta_attr_name not in ["created_at", "start_date", "end_date"]:
+                    must_conditions.append(
+                        rest.FieldCondition(
+                            key=f"metadata.{meta_attr_name}", match=rest.MatchValue(value=attr_value)
+                        )
                     )
-                )
 
             # Date filters use range filtering
             start_date = metadata_filter.start_date
             end_date = metadata_filter.end_date
             if start_date or end_date:
                 gte_filter = (
-                    to_unix_timestamp(start_date) if start_date is not None else None
+                    to_unix_timestamp(start_date) 
+                    if type(start_date) == str 
+                    else start_date
+                    if start_date is not None
+                    else None
                 )
                 lte_filter = (
-                    to_unix_timestamp(end_date) if end_date is not None else None
+                    to_unix_timestamp(end_date)
+                    if type(end_date) == str 
+                    else end_date
+                    if end_date is not None
+                    else None
                 )
                 must_conditions.append(
                     rest.FieldCondition(
-                        key="created_at",
+                        key="metadata.created_at",
                         range=rest.Range(
                             gte=gte_filter,
                             lte=lte_filter,
@@ -223,6 +227,7 @@ class QdrantDataStore(DataStore):
                     )
                 )
 
+        print(must_conditions, should_conditions)
         if 0 == len(must_conditions) and 0 == len(should_conditions):
             return None
 
@@ -232,6 +237,7 @@ class QdrantDataStore(DataStore):
         self, scored_point: rest.ScoredPoint
     ) -> DocumentChunkWithScore:
         payload = scored_point.payload or {}
+        print(payload)
         return DocumentChunkWithScore(
             id=payload.get("id"),
             text=scored_point.payload.get("text"),  # type: ignore

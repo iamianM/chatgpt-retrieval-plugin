@@ -139,3 +139,6 @@ dmypy.json
 
 # creds
 *.creds*
+data
+OPENAI*
+*log_*.txt

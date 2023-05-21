@@ -13,6 +13,10 @@ from models.models import (
 from services.chunks import get_document_chunks
 from services.openai import get_embeddings, get_sparse_embeddings
 
+import os
+
+datastore_service = os.getenv('DATASTORE')
+
 
 class DataStore(ABC):
     async def upsert(
@@ -24,18 +28,7 @@ class DataStore(ABC):
         Return a list of document ids.
         """
         # Delete any existing vectors for documents with the input document ids
-        await asyncio.gather(
-            *[
-                self.delete(
-                    filter=DocumentMetadataFilter(
-                        document_id=document.id,
-                    ),
-                    delete_all=False,
-                )
-                for document in documents
-                if document.id
-            ]
-        )
+        await self.delete(ids=[document.id for document in documents if document.id], delete_all=False)
 
         chunks = get_document_chunks(documents, chunk_token_size)
 
@@ -50,26 +43,29 @@ class DataStore(ABC):
 
         raise NotImplementedError
 
-    async def query(self, queries: List[Query]) -> List[QueryResult]:
+    async def query(self, queries: List[Query], search_topics) -> List[QueryResult]:
         """
         Takes in a list of queries and filters and returns a list of query results with matching document chunks and scores.
         """
         # get a list of of just the queries from the Query list
         query_texts = [query.query for query in queries]
         query_embeddings = get_embeddings(query_texts)
-        query_sparse_values = get_sparse_embeddings(query_texts)
-        # hydrate the queries with embeddings
-        queries_with_embeddings = [
-        #     QueryWithEmbedding(**query.dict(), embedding=embedding)
-        #     for query, embedding in zip(queries, query_embeddings)
-        # ]
-            QueryWithEmbedding(**query.dict(), embedding=embedding, sparse_values=sparse_values)
-            for query, embedding, sparse_values in zip(queries, query_embeddings, query_sparse_values)
-        ]
-        return await self._query(queries_with_embeddings)
+        if datastore_service == 'pinecone':
+            query_sparse_values = get_sparse_embeddings(query_texts)
+            # hydrate the queries with embeddings
+            queries_with_embeddings = [
+                QueryWithEmbedding(**query.dict(), embedding=embedding, sparse_values=sparse_values)
+                for query, embedding, sparse_values in zip(queries, query_embeddings, query_sparse_values)
+            ]
+        else:
+            queries_with_embeddings = [
+                QueryWithEmbedding(**query.dict(), embedding=embedding)
+                for query, embedding in zip(queries, query_embeddings)
+            ]
+        return await self._query(queries_with_embeddings, search_topics)
 
     @abstractmethod
-    async def _query(self, queries: List[QueryWithEmbedding]) -> List[QueryResult]:
+    async def _query(self, queries: List[QueryWithEmbedding], search_topics=False) -> List[QueryResult]:
         """
         Takes in a list of queries with embeddings and filters and returns a list of query results with matching document chunks and scores.
         """

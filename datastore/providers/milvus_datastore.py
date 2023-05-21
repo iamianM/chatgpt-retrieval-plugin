@@ -39,7 +39,7 @@ MILVUS_SEARCH_PARAMS = os.environ.get("MILVUS_SEARCH_PARAMS")
 MILVUS_CONSISTENCY_LEVEL = os.environ.get("MILVUS_CONSISTENCY_LEVEL")
 
 UPSERT_BATCH_SIZE = 100
-OUTPUT_DIM = 1536
+OUTPUT_DIM = 384
 EMBEDDING_FIELD = "embedding"
 
 
@@ -94,6 +94,21 @@ SCHEMA_V1 = [
         FieldSchema(name="author", dtype=DataType.VARCHAR, max_length=65535),
         "",
     ),
+    ("episode_id", FieldSchema(name="episode_id", dtype=DataType.VARCHAR, max_length=65535), '-1'),
+    ("podcast_id", FieldSchema(name="podcast_id", dtype=DataType.VARCHAR, max_length=65535), '-1'),
+    ("mp3_url", FieldSchema(name="mp3_url", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("episode_duration", FieldSchema(name="episode_duration", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("name", FieldSchema(name="name", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("slug", FieldSchema(name="slug", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("start_timestamp", FieldSchema(name="start_timestamp", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("end_timestamp", FieldSchema(name="end_timestamp", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("text_metadata", FieldSchema(name="text_metadata", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("keyphrases", FieldSchema(name="keyphrases", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("keywords", FieldSchema(name="keywords", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("entities", FieldSchema(name="entities", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("topic_label", FieldSchema(name="topic_label", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("namespace", FieldSchema(name="namespace", dtype=DataType.VARCHAR, max_length=65535), ""),
+    ("chunk_id", FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=65535), ""),
 ]
 
 # V2 schema, remomve the "pk" field
@@ -288,50 +303,42 @@ class MilvusDataStore(DataStore):
         Returns:
             List[str]: The document_id's that were inserted.
         """
-        try:
-            # The doc id's to return for the upsert
-            doc_ids: List[str] = []
-            # List to collect all the insert data, skip the "pk" for schema V1
-            offset = 1 if self._schema_ver == "V1" else 0
-            insert_data = [[] for _ in range(len(self._get_schema()) - offset)]
+        # The doc id's to return for the upsert
+        doc_ids: List[str] = []
+        # List to collect all the insert data, skip the "pk" for schema V1
+        offset = 1 if self._schema_ver == "V1" else 0
+        insert_data = [[] for _ in range(len(self._get_schema()) - offset)]
 
-            # Go through each document chunklist and grab the data
-            for doc_id, chunk_list in chunks.items():
-                # Append the doc_id to the list we are returning
-                doc_ids.append(doc_id)
-                # Examine each chunk in the chunklist
-                for chunk in chunk_list:
-                    # Extract data from the chunk
-                    list_of_data = self._get_values(chunk)
-                    # Check if the data is valid
-                    if list_of_data is not None:
-                        # Append each field to the insert_data
-                        for x in range(len(insert_data)):
-                            insert_data[x].append(list_of_data[x])
-            # Slice up our insert data into batches
-            batches = [
-                insert_data[i : i + UPSERT_BATCH_SIZE]
-                for i in range(0, len(insert_data), UPSERT_BATCH_SIZE)
-            ]
+        # Go through each document chunklist and grab the data
+        for doc_id, chunk_list in chunks.items():
+            # Append the doc_id to the list we are returning
+            doc_ids.append(doc_id)
+            # Examine each chunk in the chunklist
+            for chunk in chunk_list:
+                # Extract data from the chunk
+                list_of_data = self._get_values(chunk)
+                # Check if the data is valid
+                if list_of_data is not None:
+                    # Append each field to the insert_data
+                    for x in range(len(insert_data)):
+                        insert_data[x].append(list_of_data[x])
+        # Slice up our insert data into batches
+        batches = [
+            insert_data[i : i + UPSERT_BATCH_SIZE]
+            for i in range(0, len(insert_data), UPSERT_BATCH_SIZE)
+        ]
 
-            # Attempt to insert each batch into our collection
-            # batch data can work with both V1 and V2 schema
-            for batch in batches:
-                if len(batch[0]) != 0:
-                    try:
-                        self._print_info(f"Upserting batch of size {len(batch[0])}")
-                        self.col.insert(batch)
-                        self._print_info(f"Upserted batch successfully")
-                    except Exception as e:
-                        self._print_err(f"Failed to insert batch records, error: {e}")
-                        raise e
+        # Attempt to insert each batch into our collection
+        # batch data can work with both V1 and V2 schema
+        for batch in batches:
+            if len(batch[0]) != 0:
+                self._print_info(f"Upserting batch of size {len(batch[0])}")
+                self.col.insert(batch)
+                self._print_info(f"Upserted batch successfully")
 
-            # This setting perfoms flushes after insert. Small insert == bad to use
-            # self.col.flush()
-            return doc_ids
-        except Exception as e:
-            self._print_err("Failed to insert records, error: {}".format(e))
-            return []
+        # This setting perfoms flushes after insert. Small insert == bad to use
+        # self.col.flush()
+        return doc_ids
 
 
     def _get_values(self, chunk: DocumentChunk) -> List[any] | None:  # type: ignore
@@ -373,7 +380,7 @@ class MilvusDataStore(DataStore):
 
     async def _query(
         self,
-        queries: List[QueryWithEmbedding],
+        queries: List[QueryWithEmbedding], search_topics=False
     ) -> List[QueryResult]:
         """Query the QueryWithEmbedding against the MilvusDocumentSearch
 
@@ -387,58 +394,58 @@ class MilvusDataStore(DataStore):
         """
         # Async to perform the query, adapted from pinecone implementation
         async def _single_query(query: QueryWithEmbedding) -> QueryResult:
-            try:
-                filter = None
-                # Set the filter to expression that is valid for Milvus
-                if query.filter is not None:
-                    # Either a valid filter or None will be returned
-                    filter = self._get_filter(query.filter)
+            filter = None
+            # Set the filter to expression that is valid for Milvus
+            if query.filter is not None:
+                # Either a valid filter or None will be returned
+                filter = self._get_filter(query.filter)
 
-                # Perform our search
-                return_from = 2 if self._schema_ver == "V1" else 1
-                res = self.col.search(
-                    data=[query.embedding],
-                    anns_field=EMBEDDING_FIELD,
-                    param=self.search_params,
-                    limit=query.top_k,
-                    expr=filter,
-                    output_fields=[
-                        field[0] for field in self._get_schema()[return_from:]
-                    ],  # Ignoring pk, embedding
+            # Perform our search
+            return_from = 2 if self._schema_ver == "V1" else 1
+            res = self.col.search(
+                data=[query.embedding],
+                anns_field=EMBEDDING_FIELD,
+                param=self.search_params,
+                limit=query.top_k,
+                expr=filter,
+                output_fields=[
+                    field[0] for field in self._get_schema()[return_from:]
+                ],  # Ignoring pk, embedding
+            )
+            # Results that will hold our DocumentChunkWithScores
+            results = []
+            # Parse every result for our search
+            for hit in res[0]:  # type: ignore
+                # The distance score for the search result, falls under DocumentChunkWithScore
+                score = hit.score
+                # Our metadata info, falls under DocumentChunkMetadata
+                metadata = {}
+                # Grab the values that correspond to our fields, ignore pk and embedding.
+                for x in [field[0] for field in self._get_schema()[return_from:]]:
+                    metadata[x] = hit.entity.get(x)
+                # If the source isn't valid, convert to None
+                if metadata["source"] not in Source.__members__:
+                    metadata["source"] = None
+                # Text falls under the DocumentChunk
+                text = metadata.pop("text")
+                # Id falls under the DocumentChunk
+                ids = metadata.pop("id")
+                chunk = DocumentChunkWithScore(
+                    id=ids,
+                    score=score,
+                    text=text,
+                    metadata=DocumentChunkMetadata(**metadata),
                 )
-                # Results that will hold our DocumentChunkWithScores
-                results = []
-                # Parse every result for our search
-                for hit in res[0]:  # type: ignore
-                    # The distance score for the search result, falls under DocumentChunkWithScore
-                    score = hit.score
-                    # Our metadata info, falls under DocumentChunkMetadata
-                    metadata = {}
-                    # Grab the values that correspond to our fields, ignore pk and embedding.
-                    for x in [field[0] for field in self._get_schema()[return_from:]]:
-                        metadata[x] = hit.entity.get(x)
-                    # If the source isn't valid, convert to None
-                    if metadata["source"] not in Source.__members__:
-                        metadata["source"] = None
-                    # Text falls under the DocumentChunk
-                    text = metadata.pop("text")
-                    # Id falls under the DocumentChunk
-                    ids = metadata.pop("id")
-                    chunk = DocumentChunkWithScore(
-                        id=ids,
-                        score=score,
-                        text=text,
-                        metadata=DocumentChunkMetadata(**metadata),
-                    )
-                    results.append(chunk)
+                results.append(chunk)
 
-                # TODO: decide on doing queries to grab the embedding itself, slows down performance as double query occurs
+            # TODO: decide on doing queries to grab the embedding itself, slows down performance as double query occurs
 
-                return QueryResult(query=query.query, results=results)
-            except Exception as e:
-                self._print_err("Failed to query, error: {}".format(e))
-                return QueryResult(query=query.query, results=[])
+            return QueryResult(query=query.query, results=results)
 
+        if search_topics:
+            for query in queries:
+                query.filter.namespace = "topics"
+        
         results: List[QueryResult] = await asyncio.gather(
             *[_single_query(query) for query in queries]
         )
